@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:padding="20dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- Profile Picture -->
+        <ImageView
+            android:id="@+id/profilePicture"
+            android:src="@mipmap/ic_launcher"
+            android:layout_gravity="center"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:layout_marginTop="20dp"
+            android:contentDescription="Profile Picture" />
+
+        <!-- Full Name -->
+        <TextView
+            android:id="@+id/nameTextView"
+            android:text="Full Name"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:layout_marginTop="20dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <!-- Email -->
+        <TextView
+            android:id="@+id/emailTextView"
+            android:text="Email Address"
+            android:textSize="16sp"
+            android:layout_marginTop="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <!-- Stats -->
+        <TextView
+            android:id="@+id/userStats"
+            android:text="Questions Asked: 0\nAnswers Given: 0\nVotes Received: 0\nVerified Answers: 0"
+            android:textSize="14sp"
+            android:layout_marginTop="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <!-- Kullanıcı Rolü (Admin / Instructor) -->
+        <TextView
+            android:id="@+id/roleTextView"
+            android:text="Role: Instructor"
+            android:textSize="14sp"
+            android:textColor="#4CAF50"
+            android:layout_marginTop="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <!-- Doğrulanan Cevaplarım Butonu -->
+        <Button
+            android:id="@+id/verifiedAnswersButton"
+            android:text="My Verified Answers"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:visibility="gone"/>
+
+
+        <!-- Buttons -->
+        <Button
+            android:id="@+id/editProfileButton"
+            android:text="Edit Profile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp" />
+
+        <Button
+            android:id="@+id/logoutButton"
+            android:text="Logout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" />
+
+        <ImageButton
+            android:id="@+id/backButton"
+            android:src="@android:drawable/ic_media_previous"
+            android:background="@android:color/transparent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="Back" />
+
+    </LinearLayout>
+</ScrollView>

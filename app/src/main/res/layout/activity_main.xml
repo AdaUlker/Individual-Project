@@ -1,0 +1,83 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/homeTitle"
+        android:text="Discussion Forum"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Notification Icon -->
+    <ImageButton
+        android:id="@+id/notificationButton"
+        android:src="@android:drawable/ic_dialog_email"
+        android:background="@android:color/transparent"
+        android:layout_alignParentRight="true"
+        android:layout_alignParentTop="true"
+        android:contentDescription="Notifications"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Search Bar -->
+    <Button
+        android:id="@+id/searchButton"
+        android:text="🔍 Search"
+        android:layout_below="@id/homeTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"/>
+
+
+    <!-- Category Filter Spinner -->
+    <Spinner
+        android:id="@+id/categoryFilterSpinner"
+        android:layout_below="@id/searchButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" />
+
+    <!-- Question List -->
+    <ListView
+        android:id="@+id/questionListView"
+        android:layout_width="wrap_content"
+        android:layout_height="394dp"
+        android:layout_above="@+id/askQuestionButton"
+        android:layout_below="@id/categoryFilterSpinner"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="123dp" />
+
+    <!-- Ask a Question Button -->
+    <Button
+        android:id="@+id/askQuestionButton"
+        android:text="Ask a Question"
+        android:layout_alignParentBottom="true"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Instructor Management Button -->
+    <Button
+        android:id="@+id/manageInstructorsButton"
+        android:text="User List"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/profileButton"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Profile Button -->
+    <Button
+        android:id="@+id/profileButton"
+        android:text="Profile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/askQuestionButton"
+        android:layout_marginBottom="8dp" />
+</RelativeLayout>

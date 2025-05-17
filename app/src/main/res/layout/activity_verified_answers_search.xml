@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Geri Dön -->
+    <ImageButton
+        android:id="@+id/backButton"
+        android:src="@android:drawable/ic_media_previous"
+        android:background="@android:color/transparent"
+        android:contentDescription="Back"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Başlık -->
+    <TextView
+        android:text="Verified Answers"
+        android:textStyle="bold"
+        android:textSize="20sp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="12dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Arama -->
+    <EditText
+        android:id="@+id/searchQueryEditText"
+        android:hint="Search verified answers..."
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:drawableLeft="@android:drawable/ic_menu_search"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Kategori -->
+    <Spinner
+        android:id="@+id/categorySpinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Liste -->
+    <ListView
+        android:id="@+id/searchResultsListView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@android:color/darker_gray"
+        android:dividerHeight="1dp" />
+</LinearLayout>

@@ -1,0 +1,65 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:padding="20dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- Profil resmi -->
+        <ImageView
+            android:id="@+id/editProfilePicture"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:layout_gravity="center"
+            android:src="@mipmap/ic_launcher"
+            android:layout_marginTop="16dp"
+            android:contentDescription="Edit Profile Picture" />
+
+        <!-- Ad -->
+        <EditText
+            android:id="@+id/editNameEditText"
+            android:hint="Full Name"
+            android:layout_marginTop="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <!-- Email -->
+        <EditText
+            android:id="@+id/editEmailEditText"
+            android:hint="Email"
+            android:layout_marginTop="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textEmailAddress" />
+
+        <!-- Şifre -->
+        <EditText
+            android:id="@+id/editPasswordEditText"
+            android:hint="Password"
+            android:layout_marginTop="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textPassword" />
+
+        <!-- Kaydet butonu -->
+        <Button
+            android:id="@+id/saveEditProfileButton"
+            android:text="Save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp" />
+
+        <!-- Geri butonu -->
+        <ImageButton
+            android:id="@+id/backButton"
+            android:src="@android:drawable/ic_media_previous"
+            android:background="@android:color/transparent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="Back" />
+
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Geri Dön Tuşu -->
+    <ImageButton
+        android:id="@+id/backButton"
+        android:src="@android:drawable/ic_media_previous"
+        android:background="@android:color/transparent"
+        android:contentDescription="Back"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <!-- Yorumlar Listesi -->
+    <ListView
+        android:id="@+id/commentListView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:dividerHeight="1dp"
+        android:divider="@android:color/darker_gray" />
+
+    <!-- Yorum Yazma Alanı -->
+    <EditText
+        android:id="@+id/commentEditText"
+        android:hint="Write a comment..."
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="textMultiLine"
+        android:minLines="1"
+        android:maxLines="4" />
+
+    <!-- Gönderme Butonu -->
+    <Button
+        android:id="@+id/sendCommentButton"
+        android:text="Send"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" />
+
+</LinearLayout>
