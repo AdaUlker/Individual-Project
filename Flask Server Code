@@ -1,0 +1,808 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import mysql.connector
+
+app = Flask(__name__)
+CORS(app)
+
+# XAMPP MySQL Ayarları
+db_config = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': '',
+    'database': 'individual_project'
+}
+
+def get_db():
+    return mysql.connector.connect(**db_config)
+
+# Kullanıcı Kaydı
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO users (username, email, password) 
+            VALUES (%s, %s, %s)
+        """, (data['username'], data['email'], data['password']))
+        conn.commit()
+        return jsonify({'message': 'User registered successfully'}), 201
+    except mysql.connector.IntegrityError:
+        return jsonify({'error': 'Username already exists'}), 409
+    finally:
+        cursor.close()
+        conn.close()
+
+# Giriş Yapma
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT * FROM users 
+        WHERE username = %s AND password = %s
+    """, (data['username'], data['password']))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if user:
+        return jsonify({'message': 'Login successful', 'user': user}), 200
+    else:
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+# Soru Gönderme
+@app.route('/ask_question', methods=['POST'])
+def ask_question():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO questions (title, body, author_id, category, notify) 
+        VALUES (%s, %s, %s, %s, %s)
+    """, (data['title'], data['body'], data['author_id'], data['category'], data.get('notify', False)))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'message': 'Question posted successfully'}), 201
+
+# Soru Listeleme
+@app.route('/get_questions', methods=['GET'])
+def get_questions():
+    keyword = request.args.get('q', '')
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if keyword:
+        cursor.execute("""
+            SELECT q.id, q.title, q.body, q.author_id, q.category, q.created_at, q.verified, u.username 
+            FROM questions q 
+            JOIN users u ON q.author_id = u.id 
+            WHERE q.title LIKE %s
+        """, ('%' + keyword + '%',))
+    else:
+        cursor.execute("""
+            SELECT q.id, q.title, q.body, q.author_id, q.category, q.created_at, q.verified, u.username 
+            FROM questions q 
+            JOIN users u ON q.author_id = u.id 
+            ORDER BY q.created_at DESC
+        """)
+    questions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(questions)
+
+# Cevap Gönderme
+@app.route('/post_answer', methods=['POST'])
+def post_answer():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO answers (question_id, body, author_id) 
+            VALUES (%s, %s, %s)
+        """, (data['question_id'], data['body'], data['author_id']))
+        conn.commit()
+
+        # Soru sahibine bildirim
+        cursor.execute("SELECT author_id FROM questions WHERE id = %s", (data['question_id'],))
+        result = cursor.fetchone()
+        if result:
+            question_author_id = result[0]
+            if question_author_id != data['author_id']:
+                cursor.execute("""
+                    INSERT INTO notifications (user_id, message) 
+                    VALUES (%s, %s)
+                """, (question_author_id, "Your question has a new answer."))
+
+        conn.commit()
+        return jsonify({'message': 'Answer posted successfully'}), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# Cevap Listeleme
+@app.route('/get_answers/<int:question_id>', methods=['GET'])
+def get_answers(question_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT a.id, a.body, a.author_id, a.created_at, a.verified, u.username,
+            (SELECT COUNT(*) FROM votes WHERE answer_id = a.id AND vote_type = 'up') AS upvotes,
+            (SELECT COUNT(*) FROM votes WHERE answer_id = a.id AND vote_type = 'down') AS downvotes
+        FROM answers a
+        JOIN users u ON a.author_id = u.id
+        WHERE a.question_id = %s
+        ORDER BY a.created_at DESC
+    """, (question_id,))
+    answers = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(answers)
+
+# Oy Verme
+@app.route('/vote_answer', methods=['POST'])
+def vote_answer():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO votes (answer_id, user_id, vote_type) 
+            VALUES (%s, %s, %s)
+        """, (data['answer_id'], data['user_id'], data['vote_type']))
+
+        # Bildirimler
+        cursor.execute("SELECT author_id FROM answers WHERE id = %s", (data['answer_id'],))
+        result = cursor.fetchone()
+        if result:
+            author_id = result[0]
+            if author_id != data['user_id']:
+                cursor.execute("""
+                    INSERT INTO notifications (user_id, message)
+                    VALUES (%s, %s)
+                """, (author_id, f"Your answer received a {'👍' if data['vote_type'] == 'up' else '👎'} vote."))
+
+        conn.commit()
+        return jsonify({'message': 'Vote recorded'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+# Yorum Ekleme ve Listeleme
+@app.route('/add_comment', methods=['POST'])
+def add_comment():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # Yorumu veritabanına ekle
+        cursor.execute("""
+            INSERT INTO comments (answer_id, author_id, body)
+            VALUES (%s, %s, %s)
+        """, (data['answer_id'], data['author_id'], data['body']))
+        comment_id = cursor.lastrowid
+        conn.commit()
+
+        # Yorum yapılan cevabın sahibini bul
+        cursor.execute("SELECT author_id FROM answers WHERE id = %s", (data['answer_id'],))
+        owner = cursor.fetchone()
+
+        # Kendine yorum yaptıysa bildirim gönderme
+        if owner and owner[0] != data['author_id']:
+            cursor.execute("""
+                INSERT INTO notifications (user_id, message, answer_id)
+                VALUES (%s, %s, %s)
+            """, (owner[0], "A comment was written to one of your answers.", data['answer_id']))
+            notification_id = cursor.lastrowid
+
+            # comment_id’yi güncelle
+            cursor.execute("""
+                UPDATE notifications SET comment_id = %s WHERE id = %s
+            """, (comment_id, notification_id))
+            conn.commit()
+
+        return jsonify({'message': 'Comment added successfully'}), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/comments/<int:answer_id>', methods=['GET'])
+def get_comments(answer_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT c.*, u.username
+        FROM comments c
+        JOIN users u ON c.author_id = u.id
+        WHERE c.answer_id = %s
+        ORDER BY c.created_at ASC
+    """, (answer_id,))
+    comments = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(comments)
+
+@app.route('/delete_comment', methods=['POST'])
+def delete_comment():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT author_id FROM comments WHERE id = %s", (data['comment_id'],))
+    result = cursor.fetchone()
+    if result and result[0] == data['user_id']:
+        cursor.execute("DELETE FROM comments WHERE id = %s", (data['comment_id'],))
+        conn.commit()
+        return jsonify({'message': 'Comment deleted'}), 200
+    return jsonify({'error': 'Unauthorized or comment not found'}), 403
+
+# 🔥 Soru Silme
+@app.route('/delete_question', methods=['POST'])
+def delete_question():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT author_id FROM questions WHERE id = %s", (data['question_id'],))
+        result = cursor.fetchone()
+        if not result or result[0] != data['user_id']:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        cursor.execute("""
+            DELETE comments FROM comments 
+            JOIN answers ON comments.answer_id = answers.id 
+            WHERE answers.question_id = %s
+        """, (data['question_id'],))
+        cursor.execute("DELETE FROM votes WHERE answer_id IN (SELECT id FROM answers WHERE question_id = %s)", (data['question_id'],))
+        cursor.execute("DELETE FROM answers WHERE question_id = %s", (data['question_id'],))
+        cursor.execute("DELETE FROM questions WHERE id = %s", (data['question_id'],))
+        conn.commit()
+        return jsonify({'message': 'Question and related data deleted'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# 🔥 Cevap Silme
+@app.route('/delete_answer', methods=['POST'])
+def delete_answer():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT author_id FROM answers WHERE id = %s", (data['answer_id'],))
+        result = cursor.fetchone()
+        if not result or result[0] != data['user_id']:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        cursor.execute("DELETE FROM comments WHERE answer_id = %s", (data['answer_id'],))
+        cursor.execute("DELETE FROM votes WHERE answer_id = %s", (data['answer_id'],))
+        cursor.execute("DELETE FROM answers WHERE id = %s", (data['answer_id'],))
+        conn.commit()
+        return jsonify({'message': 'Answer and related data deleted'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# Bildirimler
+@app.route('/notifications/<int:user_id>', methods=['GET'])
+def get_notifications(user_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT * 
+        FROM notifications 
+        WHERE user_id = %s 
+        ORDER BY created_at DESC
+    """, (user_id,))
+    notes = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(notes)
+    
+@app.route('/update_user', methods=['POST'])
+def update_user():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE users 
+            SET username = %s, email = %s, password = %s 
+            WHERE id = %s
+        """, (data['username'], data['email'], data['password'], data['id']))
+        conn.commit()
+        return jsonify({'message': 'User updated successfully'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
+@app.route('/get_user_stats/<int:user_id>', methods=['GET'])
+def get_user_stats(user_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT COUNT(*) AS question_count FROM questions WHERE author_id = %s", (user_id,))
+        question_count = cursor.fetchone()['question_count']
+
+        cursor.execute("SELECT COUNT(*) AS answer_count FROM answers WHERE author_id = %s", (user_id,))
+        answer_count = cursor.fetchone()['answer_count']
+
+        cursor.execute("SELECT COUNT(*) AS vote_count FROM votes WHERE user_id = %s", (user_id,))
+        vote_count = cursor.fetchone()['vote_count']
+
+        cursor.execute("SELECT COUNT(*) AS verified_count FROM answers WHERE author_id = %s AND verified = TRUE", (user_id,))
+        verified_count = cursor.fetchone()['verified_count']
+
+        cursor.execute("SELECT COUNT(*) AS comment_count FROM comments WHERE author_id = %s", (user_id,))
+        comment_count = cursor.fetchone()['comment_count']
+
+        return jsonify({
+            'questions': question_count,
+            'answers': answer_count,
+            'votes': vote_count,
+            'verified': verified_count,
+            'comments': comment_count
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
+# Kullanıcı bilgilerini getirme
+@app.route('/get_user_info/<int:user_id>', methods=['GET'])
+def get_user_info(user_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # is_admin ve is_instructor alanlarını da sorguya dahil et
+        cursor.execute("SELECT username, email, is_admin, is_instructor FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        if user:
+            return jsonify(user), 200
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+        
+@app.route('/promote_to_instructor', methods=['POST'])
+def promote_to_instructor():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT is_instructor FROM users WHERE id = %s", (data['promoter_id'],))
+        result = cursor.fetchone()
+        if not result or result[0] != 1:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        cursor.execute("UPDATE users SET is_instructor = 1 WHERE id = %s", (data['target_id'],))
+        conn.commit()
+        return jsonify({'message': 'User promoted to instructor'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/get_all_users', methods=['GET'])
+def get_all_users():
+    promoter_id = request.args.get('promoter_id')
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Kullanıcı var mı kontrolü
+        cursor.execute("SELECT id FROM users WHERE id = %s", (promoter_id,))
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Tüm kullanıcıları listele
+        cursor.execute("SELECT id, username, email, is_instructor, is_admin FROM users")
+        users = cursor.fetchall()
+        return jsonify(users), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+
+@app.route('/verify_question', methods=['POST'])
+def verify_question():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        instructor_id = data['verifier_id']  # Android'de bu şekilde gönderiyorsun
+        question_id = data['question_id']
+        verify = data['verified']  # true / false gelecek
+
+        # Eğitmen kontrolü
+        cursor.execute("SELECT is_instructor, is_admin FROM users WHERE id = %s", (instructor_id,))
+        result = cursor.fetchone()
+        if not result or (result[0] != 1 and result[1] != 1):  # Eğitmen veya admin değilse reddet
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Soruyu onayla / onayı kaldır
+        cursor.execute("UPDATE questions SET verified = %s WHERE id = %s", (verify, question_id))
+
+
+        # Bildirim sadece onaylandığında gönderilsin
+        if verify:
+            # 1. Soru sahibi
+            cursor.execute("SELECT author_id FROM questions WHERE id = %s", (question_id,))
+            question_author = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)",
+                           (question_author, "Your question has been verified by the instructor."))
+
+            # 2. Cevaplayanlar
+            cursor.execute("SELECT DISTINCT author_id FROM answers WHERE question_id = %s", (question_id,))
+            for row in cursor.fetchall():
+                if row[0] != question_author:
+                    cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)",
+                                   (row[0], "A question you wrote the answer for has been verified by the instructor."))
+
+            # 3. Yorumu yapanlar
+            cursor.execute("""
+                SELECT DISTINCT c.author_id FROM comments c
+                JOIN answers a ON c.answer_id = a.id
+                WHERE a.question_id = %s
+            """, (question_id,))
+            for row in cursor.fetchall():
+                if row[0] != question_author:
+                    cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)",
+                                   (row[0], "A question you commented on the answer below has been verified by the instructor."))
+
+        conn.commit()
+        return jsonify({'message': 'Question verification updated'}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+@app.route('/verify_answer', methods=['POST'])
+def verify_answer():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # Eğitmen kontrolü
+        cursor.execute("SELECT is_instructor, is_admin FROM users WHERE id = %s", (data['user_id'],))
+        result = cursor.fetchone()
+        if not result or (not result[0] and not result[1]):
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Güncelle
+        cursor.execute("""
+            UPDATE answers SET verified = %s WHERE id = %s
+        """, (data['verified'], data['answer_id']))
+        conn.commit()
+
+        # Bildirim gönder
+        # 1. Cevap sahibi
+        cursor.execute("SELECT author_id, question_id FROM answers WHERE id = %s", (data['answer_id'],))
+        answer_info = cursor.fetchone()
+        if answer_info:
+            answer_author_id = answer_info[0]
+            question_id = answer_info[1]
+
+            if answer_author_id != data['user_id']:
+                cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)", 
+                               (answer_author_id, "Your answer has been verified by the instructor."))
+
+            # 2. Soru sahibi
+            cursor.execute("SELECT author_id FROM questions WHERE id = %s", (question_id,))
+            q_result = cursor.fetchone()
+            if q_result and q_result[0] != data['user_id']:
+                cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)", 
+                               (q_result[0], "An answer to your question has been verified by the instructor."))
+
+            # 3. Yorumu yapanlar
+            cursor.execute("SELECT DISTINCT author_id FROM comments WHERE answer_id = %s", (data['answer_id'],))
+            commenters = cursor.fetchall()
+            for c in commenters:
+                if c[0] != data['user_id']:
+                    cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)", 
+                                   (c[0], "The answer you commented on has been verified by the instructor."))
+
+        conn.commit()
+        return jsonify({'message': 'Answer verification updated'}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/toggle_instructor', methods=['POST'])
+def toggle_instructor():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        promoter_id = data.get('promoter_id')
+        target_id = data.get('target_id')
+        new_status = data.get('is_instructor')
+
+        # Promoter admin mi?
+        cursor.execute("SELECT is_admin FROM users WHERE id = %s", (promoter_id,))
+        promoter_result = cursor.fetchone()
+        if not promoter_result or promoter_result[0] != 1:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Hedef kullanıcı var mı?
+        cursor.execute("SELECT id FROM users WHERE id = %s", (target_id,))
+        target_result = cursor.fetchone()
+        if not target_result:
+            return jsonify({'error': 'Target user not found'}), 404
+
+        # Güncelle
+        cursor.execute("UPDATE users SET is_instructor = %s WHERE id = %s", (new_status, target_id))
+        conn.commit()
+        return jsonify({'message': 'Instructor status updated'}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/delete_user_completely', methods=['POST'])
+def delete_user_completely():
+    data = request.json  # {"requester_id": x, "target_user_id": y}
+    conn = get_db()
+    cursor = conn.cursor()
+
+    requester_id = data.get('requester_id')
+    target_user_id = data.get('target_user_id')
+
+    try:
+        if requester_id == target_user_id:
+            return jsonify({'error': 'You cannot delete yourself'}), 403
+
+        # Requester yetkisini al
+        cursor.execute("SELECT is_admin, is_instructor FROM users WHERE id = %s", (requester_id,))
+        requester = cursor.fetchone()
+        if not requester:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        is_admin = requester[0]
+        is_instructor = requester[1]
+
+        # Hedef kullanıcının rolünü al
+        cursor.execute("SELECT is_instructor, is_admin FROM users WHERE id = %s", (target_user_id,))
+        target = cursor.fetchone()
+        if not target:
+            return jsonify({'error': 'Target user not found'}), 404
+
+        target_is_instructor = target[0]
+        target_is_admin = target[1]
+
+        # Yetki kontrolü
+        if is_admin:
+            pass  # admin her kullanıcıyı silebilir
+        elif is_instructor:
+            if target_is_admin or target_is_instructor:
+                return jsonify({'error': 'Instructors cannot delete other instructors or admins'}), 403
+        else:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Kullanıcının tüm ilişkili verilerini sil
+        cursor.execute("DELETE FROM comments WHERE author_id = %s", (target_user_id,))
+        cursor.execute("DELETE FROM votes WHERE user_id = %s", (target_user_id,))
+        cursor.execute("DELETE FROM answers WHERE author_id = %s", (target_user_id,))
+        cursor.execute("DELETE FROM questions WHERE author_id = %s", (target_user_id,))
+        cursor.execute("DELETE FROM notifications WHERE user_id = %s", (target_user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s", (target_user_id,))
+        conn.commit()
+        return jsonify({'message': 'User and all data deleted'}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        cursor.close()
+        conn.close()
+
+        
+@app.route('/toggle_admin_status', methods=['POST'])
+def toggle_admin_status():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # Yapan kişi admin mi?
+        cursor.execute("SELECT is_admin FROM users WHERE id = %s", (data['promoter_id'],))
+        promoter = cursor.fetchone()
+        if not promoter or promoter[0] != 1:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Kendisini adminlikten çıkaramaz
+        if data['promoter_id'] == data['target_id']:
+            return jsonify({'error': 'You cannot change your own admin status'}), 400
+
+        # Güncel durumu çek
+        cursor.execute("SELECT is_admin FROM users WHERE id = %s", (data['target_id'],))
+        current = cursor.fetchone()
+        if current is None:
+            return jsonify({'error': 'Target user not found'}), 404
+
+        new_status = 0 if current[0] == 1 else 1
+        cursor.execute("UPDATE users SET is_admin = %s WHERE id = %s", (new_status, data['target_id']))
+        conn.commit()
+        return jsonify({'message': 'Admin status toggled'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
+@app.route('/get_question_by_id/<int:question_id>', methods=['GET'])
+def get_question_by_id(question_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT q.*, u.username
+            FROM questions q
+            JOIN users u ON q.author_id = u.id
+            WHERE q.id = %s
+        """, (question_id,))
+        question = cursor.fetchone()
+        if question:
+            return jsonify(question), 200
+        else:
+            return jsonify({'error': 'Question not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
+@app.route('/get_answer_by_id/<int:answer_id>', methods=['GET'])
+def get_answer_by_id(answer_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT a.*, u.username
+            FROM answers a
+            JOIN users u ON a.author_id = u.id
+            WHERE a.id = %s
+        """, (answer_id,))
+        answer = cursor.fetchone()
+        if answer:
+            return jsonify(answer), 200
+        else:
+            return jsonify({'error': 'Answer not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
+@app.route('/verified_answers/<int:user_id>', methods=['GET'])
+def get_verified_answers(user_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT a.body, q.title
+        FROM answers a
+        JOIN questions q ON a.question_id = q.id
+        WHERE a.verified = 1 AND a.author_id = %s
+        ORDER BY a.created_at DESC
+    """, (user_id,))
+    results = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(results)
+    
+@app.route('/search_verified_answers', methods=['GET'])
+def search_verified_answers():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT 
+                a.id AS answer_id,
+                a.body AS answer_body,
+                a.question_id,
+                q.title AS question_title,
+                q.body AS question_body,               
+                q.category,
+                q.verified AS question_verified
+            FROM answers a
+            JOIN questions q ON a.question_id = q.id
+            WHERE a.verified = 1
+            ORDER BY a.created_at DESC
+        """)
+        results = cursor.fetchall()
+        return jsonify(results), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
+@app.route('/delete_notification', methods=['POST'])
+def delete_notification():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM notifications WHERE id = %s", (data['notification_id'],))
+        conn.commit()
+        return jsonify({'message': 'Notification deleted'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/increment_seen', methods=['POST'])
+def increment_seen():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE notifications 
+            SET seen = seen + 1 
+            WHERE id = %s
+        """, (data['notification_id'],))
+        conn.commit()
+        return jsonify({'message': 'Seen incremented'}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# Ana Başlatıcı
+if __name__ == '__main__':
+    app.run(debug=True)
